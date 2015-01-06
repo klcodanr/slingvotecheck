@@ -8,6 +8,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.mail.Message;
@@ -27,7 +28,7 @@ public class VoteCheckHook implements Hook {
 			.compile("sh check_staged_release.sh (\\d)+ /tmp/sling-staging");
 
 	private static final Pattern RELEASE_REPO = Pattern
-			.compile("https://repository.apache.org/content/repositories/orgapachesling-(\\d)+/");
+			.compile("https://repository.apache.org/content/repositories/orgapachesling-+(\\d)+/?");
 
 	private static final String SLING_PROJECT_PATH = "/opt/dev/sling";
 
@@ -51,8 +52,14 @@ public class VoteCheckHook implements Hook {
 	 * @see org.klco.email2html.Hook#afterRead(javax.mail.Message,
 	 * org.klco.email2html.models.EmailMessage)
 	 */
-	public void afterRead(Message sourceMessage, EmailMessage message) {
-		// do nothing
+	public boolean afterRead(Message sourceMessage, EmailMessage message) {
+		String subject = message.getSubject();
+		Matcher m = RELEASE_COMMAND.matcher(message.getFullMessage());
+		if (!subject.contains("[RELEASE]") && !subject.contains("RELEASE]")
+				&& !subject.toLowerCase().contains("re:") && m.find()) {
+			return true;
+		}
+		return false;
 	}
 
 	/*
@@ -79,39 +86,52 @@ public class VoteCheckHook implements Hook {
 		String fullMessage = message.getFullMessage();
 		String subject = message.getSubject();
 		Map<String, String> properties = new HashMap<String, String>();
-		if (!subject.contains("[RELEASE]") && !subject.contains("RELEASE]")
-				&& !subject.toLowerCase().contains("re:")
-				&& RELEASE_COMMAND.matcher(fullMessage).find()) {
-			String id = filterDigits(RELEASE_COMMAND.matcher(fullMessage)
-					.group());
-			log.debug("Found ID {}", id);
+		Matcher m = RELEASE_COMMAND.matcher(fullMessage);
+		m.find();
+		String id = filterDigits(m.group());
+		log.debug("Found ID {}", id);
 
-			try {
-				log.debug("Checking to see if repo exists...");
-				String urlStr = RELEASE_REPO.matcher(fullMessage).group();
+		try {
+			log.debug("Checking to see if repo exists...");
+			Matcher urlMatcher = RELEASE_REPO.matcher(fullMessage);
+			int statusCode = 200;
+			if (urlMatcher.find()) {
+				String urlStr = urlMatcher.group();
 				URL url = new URL(urlStr);
 				HttpURLConnection http = (HttpURLConnection) url
 						.openConnection();
-				int statusCode = http.getResponseCode();
+				statusCode = http.getResponseCode();
+				if (statusCode != 200) {
+					log.warn("Unable to find release repo {}, error code {}",
+							new Object[] { urlStr, http.getResponseMessage() });
+					properties.put("validationResultClass", "warn");
+					properties.put(
+							"validationResult",
+							"Unable to find release repo " + urlStr
+									+ ", error code "
+									+ http.getResponseMessage());
+					return;
+				}
+			} else {
+				log.warn("No repo url found in message {}", fullMessage);
+			}
 
-				if (statusCode == 200) {
-					StringBuilder result = new StringBuilder();
+			StringBuilder result = new StringBuilder();
 
-					log.debug("Executing commands...");
-					call("wget https://people.apache.org/keys/group/sling.asc -O /tmp/sling.asc",
-							result);
-					call("gpg --import /tmp/sling.asc", result);
-					call("sh " + SLING_PROJECT_PATH
-							+ "/check_staged_release.sh " + id
-							+ " /tmp/sling-staging", result);
+			if (statusCode == 200) {
+				log.debug("Executing commands...");
 
-					String validationResult = result.toString();
-					properties.put("validationResultClass", (validationResult
-							.contains("BAD!!") ? "bad" : "good"));
-					properties.put("validationResult", validationResult);
+				call("sh " + SLING_PROJECT_PATH + "/check_staged_release.sh "
+						+ id + " /tmp/sling-staging", result);
 
-					log.debug("Copying validation output and adding as attachment...");
-					File folder = new File("/tmp/sling-staging/" + id);
+				String validationResult = result.toString();
+				properties.put("validationResultClass",
+						(validationResult.contains("BAD!!") ? "bad" : "good"));
+				properties.put("validationResult", validationResult);
+
+				log.debug("Copying validation output and adding as attachment...");
+				File folder = new File("/tmp/sling-staging/" + id);
+				if (folder != null && folder.exists() && folder.isDirectory()) {
 					for (File srcFile : folder.listFiles()) {
 						File destDir = new File(config.getOutputDir()
 								+ File.separator + config.getImagesSubDir()
@@ -124,31 +144,18 @@ public class VoteCheckHook implements Hook {
 								new File(destDir.getAbsolutePath()
 										+ File.separator + srcFile.getName()));
 					}
-
-				} else {
-					log.warn("Unable to find release repo {}, error code {}",
-							new Object[] { urlStr, http.getResponseMessage() });
-					properties.put("validationResultClass", "warn");
-					properties.put(
-							"validationResult",
-							"Unable to find release repo " + urlStr
-									+ ", error code "
-									+ http.getResponseMessage());
 				}
-
-				log.debug("Updating message...");
-				String messageTemplate = IOUtils.toString(getClass()
-						.getResourceAsStream("/message.html"));
-				properties.put("subject", subject);
-
-				StrSubstitutor sub = new StrSubstitutor(properties);
-				message.setMessage(sub.replace(messageTemplate));
-			} catch (IOException e) {
-				log.error("IOException updating message", e);
 			}
 
-		} else {
-			log.debug("Ignoring message " + message.getSubject());
+			log.debug("Updating message...");
+			String messageTemplate = IOUtils.toString(getClass()
+					.getResourceAsStream("/message.html"));
+			properties.put("subject", subject);
+
+			StrSubstitutor sub = new StrSubstitutor(properties);
+			message.setMessage(sub.replace(messageTemplate));
+		} catch (IOException e) {
+			log.error("IOException updating message", e);
 		}
 
 	}
@@ -215,6 +222,12 @@ public class VoteCheckHook implements Hook {
 	 */
 	public void init(Email2HTMLConfiguration config) {
 		this.config = config;
+
+		StringBuilder result = new StringBuilder();
+		call("/usr/local/bin/wget https://people.apache.org/keys/group/sling.asc -O /tmp/sling.asc",
+				result);
+		call("/usr/local/bin/gpg --import /tmp/sling.asc", result);
+		log.debug("Init result {}", result.toString());
 	}
 
 }
