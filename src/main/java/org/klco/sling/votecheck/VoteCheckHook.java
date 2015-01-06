@@ -87,7 +87,7 @@ public class VoteCheckHook implements Hook {
 		log.trace("beforeWrite");
 		String fullMessage = message.getFullMessage();
 		String subject = message.getSubject();
-		Map<String, String> properties = new HashMap<String, String>();
+		Map<String, String> properties = new HashMap<String, String>();	
 		Matcher m = RELEASE_COMMAND.matcher(fullMessage);
 		m.find();
 		String id = filterDigits(m.group());
@@ -148,6 +148,10 @@ public class VoteCheckHook implements Hook {
 					}
 				}
 			}
+			
+			fullMessage = fullMessage.replace("\n", "\n<br/>");
+			fullMessage = fullMessage.replace("-", "&ndash;");
+			properties.put("fullMessage", fullMessage);
 
 			log.debug("Updating message...");
 			String messageTemplate = IOUtils.toString(getClass()
