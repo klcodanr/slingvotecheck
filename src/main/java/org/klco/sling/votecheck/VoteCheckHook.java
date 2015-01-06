@@ -149,7 +149,7 @@ public class VoteCheckHook implements Hook {
 				}
 			}
 			
-			fullMessage = fullMessage.replace("\n", "\n<br/>");
+			fullMessage = fullMessage.replaceAll("(\r\n|\n)", "<br/>");
 			fullMessage = fullMessage.replace("-", "&ndash;");
 			properties.put("fullMessage", fullMessage);
 
@@ -159,6 +159,7 @@ public class VoteCheckHook implements Hook {
 			properties.put("subject", subject);
 
 			StrSubstitutor sub = new StrSubstitutor(properties);
+			message.setFullMessage(sub.replace(messageTemplate));
 			message.setMessage(sub.replace(messageTemplate));
 		} catch (IOException e) {
 			log.error("IOException updating message", e);
