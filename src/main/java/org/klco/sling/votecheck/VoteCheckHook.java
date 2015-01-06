@@ -37,6 +37,8 @@ public class VoteCheckHook implements Hook {
 
 	private Email2HTMLConfiguration config;
 
+	private String bin = "";
+
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -223,10 +225,16 @@ public class VoteCheckHook implements Hook {
 	public void init(Email2HTMLConfiguration config) {
 		this.config = config;
 
+		// Working around an issue with testing OSX where GPG and WGET aren't in /bin
+		if (new File("/usr/local/bin/wget").exists()) {
+			bin = "/usr/local/bin/";
+		}
+
 		StringBuilder result = new StringBuilder();
-		call("/usr/local/bin/wget https://people.apache.org/keys/group/sling.asc -O /tmp/sling.asc",
+		call(bin
+				+ "wget https://people.apache.org/keys/group/sling.asc -O /tmp/sling.asc",
 				result);
-		call("/usr/local/bin/gpg --import /tmp/sling.asc", result);
+		call(bin + "gpg --import /tmp/sling.asc", result);
 		log.debug("Init result {}", result.toString());
 	}
 
