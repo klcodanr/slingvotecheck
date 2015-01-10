@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -87,7 +89,7 @@ public class VoteCheckHook implements Hook {
 		log.trace("beforeWrite");
 		String fullMessage = message.getFullMessage();
 		String subject = message.getSubject();
-		Map<String, String> properties = new HashMap<String, String>();	
+		Map<String, String> properties = new HashMap<String, String>();
 		Matcher m = RELEASE_COMMAND.matcher(fullMessage);
 		m.find();
 		String id = filterDigits(m.group());
@@ -131,23 +133,18 @@ public class VoteCheckHook implements Hook {
 				properties.put("validationResult", validationResult);
 
 				log.debug("Copying validation output and adding as attachment...");
-				File folder = new File("/tmp/sling-staging/" + id);
-				if (folder != null && folder.exists() && folder.isDirectory()) {
-					for (File srcFile : folder.listFiles()) {
-						File destDir = new File(config.getOutputDir()
-								+ File.separator + config.getImagesSubDir()
-								+ File.separator + id);
-						if (!destDir.exists()) {
-							destDir.mkdirs();
-						}
-						FileUtils.copyFileToDirectory(srcFile, destDir);
-						message.getAttachments().add(
-								new File(destDir.getAbsolutePath()
-										+ File.separator + srcFile.getName()));
-					}
+				File source = new File("/tmp/sling-staging/" + id);
+				File target = new File(config.getOutputDir() + File.separator
+						+ config.getImagesSubDir() + File.separator + id);
+				List<File> files = this.copyFiles(source, target);
+				List<String> filePaths = new ArrayList<String>();
+				for (File file : files) {
+					filePaths.add(file.getAbsolutePath().substring(
+							config.getOutputDir().length()));
 				}
+				params.put("attachments", filePaths);
 			}
-			
+
 			fullMessage = fullMessage.replaceAll("(\r\n|\n)", "<br/>");
 			fullMessage = fullMessage.replace("-", "&ndash;");
 			properties.put("fullMessage", fullMessage);
@@ -165,6 +162,25 @@ public class VoteCheckHook implements Hook {
 			log.error("IOException updating message", e);
 		}
 
+	}
+
+	public List<File> copyFiles(File source, File target) throws IOException {
+		List<File> files = new ArrayList<File>();
+
+		if (source != null && source.exists() && source.isDirectory()) {
+			for (File srcFile : source.listFiles()) {
+				if (!target.exists()) {
+					target.mkdirs();
+				}
+				if (srcFile.isDirectory()) {
+					files.addAll(copyFiles(srcFile,
+							new File(target.getAbsolutePath() + File.separator
+									+ srcFile.getName())));
+				}
+				FileUtils.copyFileToDirectory(srcFile, target);
+			}
+		}
+		return files;
 	}
 
 	/**
@@ -230,7 +246,8 @@ public class VoteCheckHook implements Hook {
 	public void init(Email2HTMLConfiguration config) {
 		this.config = config;
 
-		// Working around an issue with testing OSX where GPG and WGET aren't in /bin
+		// Working around an issue with testing OSX where GPG and WGET aren't in
+		// /bin
 		if (new File("/usr/local/bin/wget").exists()) {
 			bin = "/usr/local/bin/";
 		}
