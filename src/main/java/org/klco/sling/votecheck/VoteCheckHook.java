@@ -112,7 +112,6 @@ public class VoteCheckHook implements Hook {
 							"Unable to find release repo " + urlStr
 									+ ", error code "
 									+ http.getResponseMessage());
-					return;
 				}
 			} else {
 				log.warn("No repo url found in message {}", fullMessage);
@@ -159,8 +158,9 @@ public class VoteCheckHook implements Hook {
 			properties.put("subject", subject);
 
 			StrSubstitutor sub = new StrSubstitutor(properties);
-			message.setFullMessage(sub.replace(messageTemplate));
 			message.setMessage(sub.replace(messageTemplate));
+			params.put("fullMessage", sub.replace(messageTemplate));
+			params.put("message", sub.replace(messageTemplate));
 		} catch (IOException e) {
 			log.error("IOException updating message", e);
 		}
