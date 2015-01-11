@@ -17,7 +17,6 @@ import javax.mail.Message;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.text.StrSubstitutor;
 import org.klco.email2html.Hook;
 import org.klco.email2html.models.Email2HTMLConfiguration;
 import org.klco.email2html.models.EmailMessage;
@@ -128,9 +127,9 @@ public class VoteCheckHook implements Hook {
 						+ id + " /tmp/sling-staging", result);
 
 				String validationResult = result.toString();
-				properties.put("validationResultClass",
+				params.put("status",
 						(validationResult.contains("BAD!!") ? "bad" : "good"));
-				properties.put("validationResult", validationResult);
+				params.put("validationResult", validationResult);
 
 				log.debug("Copying validation output and adding as attachment...");
 				File source = new File("/tmp/sling-staging/" + id);
@@ -147,17 +146,7 @@ public class VoteCheckHook implements Hook {
 
 			fullMessage = fullMessage.replaceAll("(\r\n|\n)", "<br/>");
 			fullMessage = fullMessage.replace("-", "&ndash;");
-			properties.put("fullMessage", fullMessage);
-
-			log.debug("Updating message...");
-			String messageTemplate = IOUtils.toString(getClass()
-					.getResourceAsStream("/message.html"));
-			properties.put("subject", subject);
-
-			StrSubstitutor sub = new StrSubstitutor(properties);
-			message.setMessage(sub.replace(messageTemplate));
-			params.put("fullMessage", sub.replace(messageTemplate));
-			params.put("message", sub.replace(messageTemplate));
+			params.put("htmlMessage", fullMessage);
 		} catch (IOException e) {
 			log.error("IOException updating message", e);
 		}
