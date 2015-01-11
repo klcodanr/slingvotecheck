@@ -176,8 +176,9 @@ public class VoteCheckHook implements Hook {
 					files.addAll(copyFiles(srcFile,
 							new File(target.getAbsolutePath() + File.separator
 									+ srcFile.getName())));
+				} else {
+					FileUtils.copyFileToDirectory(srcFile, target);
 				}
-				FileUtils.copyFileToDirectory(srcFile, target);
 			}
 		}
 		return files;
