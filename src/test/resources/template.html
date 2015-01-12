@@ -2,7 +2,18 @@
 layout: message
 title: Sling Vote ${subject}
 sentDate: ${sentDate}
+sender: ${sender}
+status: ${status}
 attachments: ${attachments}
+
 ---
 
-${message}
+<div class="original-message">
+	${htmlMessage}
+</div>
+<h3>Validation Result</h3>
+<pre class="validation-result">
+	<code>
+		${validationResult}
+	</code>
+</pre>

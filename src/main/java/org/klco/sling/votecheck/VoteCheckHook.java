@@ -7,7 +7,6 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -27,9 +26,6 @@ public class VoteCheckHook implements Hook {
 
 	private static final Pattern RELEASE_COMMAND = Pattern
 			.compile("sh check_staged_release.sh (\\d)+ /tmp/sling-staging");
-
-	private static final Pattern RELEASE_REPO = Pattern
-			.compile("https://repository.apache.org/content/repositories/orgapachesling-+(\\d)+/?");
 
 	private static final String SLING_PROJECT_PATH = "/opt/dev/sling";
 
@@ -87,8 +83,6 @@ public class VoteCheckHook implements Hook {
 	public void beforeWrite(EmailMessage message, Map<String, Object> params) {
 		log.trace("beforeWrite");
 		String fullMessage = message.getFullMessage();
-		String subject = message.getSubject();
-		Map<String, String> properties = new HashMap<String, String>();
 		Matcher m = RELEASE_COMMAND.matcher(fullMessage);
 		m.find();
 		String id = filterDigits(m.group());
@@ -96,39 +90,38 @@ public class VoteCheckHook implements Hook {
 
 		try {
 			log.debug("Checking to see if repo exists...");
-			Matcher urlMatcher = RELEASE_REPO.matcher(fullMessage);
-			int statusCode = 200;
-			if (urlMatcher.find()) {
-				String urlStr = urlMatcher.group();
-				URL url = new URL(urlStr);
-				HttpURLConnection http = (HttpURLConnection) url
-						.openConnection();
-				statusCode = http.getResponseCode();
-				if (statusCode != 200) {
-					log.warn("Unable to find release repo {}, error code {}",
-							new Object[] { urlStr, http.getResponseMessage() });
-					properties.put("validationResultClass", "warn");
-					properties.put(
-							"validationResult",
-							"Unable to find release repo " + urlStr
-									+ ", error code "
-									+ http.getResponseMessage());
-				}
-			} else {
-				log.warn("No repo url found in message {}", fullMessage);
-			}
+
+			URL url = new URL(
+					"https://repository.apache.org/content/repositories/orgapachesling-"
+							+ id);
+			HttpURLConnection http = (HttpURLConnection) url.openConnection();
+			int statusCode = http.getResponseCode();
 
 			StringBuilder result = new StringBuilder();
 
-			if (statusCode == 200) {
+			if (statusCode != 200) {
+				log.warn("Unable to find release repo {}, error code {}",
+						new Object[] { url, http.getResponseMessage() });
+				params.put("status", "warn");
+				params.put("reason", "Unable to find release repository");
+				params.put("validationResult", "Unable to find release repo "
+						+ url + ", error code " + http.getResponseCode() + ":"
+						+ http.getResponseMessage());
+
+			} else {
 				log.debug("Executing commands...");
 
 				call("sh " + SLING_PROJECT_PATH + "/check_staged_release.sh "
 						+ id + " /tmp/sling-staging", result);
 
 				String validationResult = result.toString();
-				params.put("status",
-						(validationResult.contains("BAD!!") ? "bad" : "good"));
+				if (validationResult.contains("BAD!!")) {
+					params.put("status", "bad");
+					params.put("reason", "GPG or checksum validation failed");
+				} else {
+					params.put("status", "good");
+					params.put("reason", "All checks passed");
+				}
 				params.put("validationResult", validationResult);
 
 				log.debug("Copying validation output and adding as attachment...");
